@@ -1377,17 +1377,131 @@ open htmlcov/index.html  # macOS
 xdg-open htmlcov/index.html  # Linux
 #  หรือ 
 start htmlcov/index.html  # Windows
-```
+``
 
 ## แนบรูปผลการทดลองการทดสอบระบบ
-```plaintext
-# แนบรูปผลการทดลองที่นี่
+
+![alt text](image.png)
 
 ``` 
 ## คำถามการทดลอง
 ให้จับคู่ Code ส่วนของการทดสอบ กับ Code การทำงาน มาอย่างน้อย 3 ฟังก์ชัน พร้อมอธิบายการทำงานของแต่ละกรณี
 ```plaintext
-# ตอบคำถามที่นี่
+การตรวจสอบสถานะระบบ (Health Check)
+
+โค้ดการทำงานจริง: app/routes.py
+
+@api.route('/health')
+def health_check():
+    try:
+        db.session.execute('SELECT 1')
+        return jsonify({
+            "status": "healthy",
+            "database": "connected"
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e)
+        }), 503
+
+
+โค้ดส่วนการทดสอบ: tests/test_app.py
+
+def test_health_endpoint_success(self, client):
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "healthy"
+    assert data["database"] == "connected"
+
+
+คำอธิบาย:
+การทดสอบนี้จำลองการเรียก API /api/health เพื่อเช็กว่าระบบเชื่อมต่อฐานข้อมูลได้ปกติหรือไม่
+ถ้า query ผ่าน (SELECT 1) จะตอบกลับ "healthy" และสถานะ 200 OK
+
+การเพิ่ม Todo ใหม่ (Create Todo)
+
+โค้ดการทำงานจริง: app/routes.py
+
+@api.route('/todos', methods=['POST'])
+def create_todo():
+    data = request.get_json()
+    title = data.get('title', '').strip()
+    description = data.get('description', '').strip() if data.get('description') else ''
+
+    if not title:
+        return jsonify({
+            "success": False,
+            "error": "Title is required"
+        }), 400
+
+    try:
+        todo = Todo(title=title, description=description)
+        db.session.add(todo)
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": "Todo created successfully",
+            "data": todo.to_dict()
+        }), 201
+    except Exception:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "error": "Database error"
+        }), 500
+
+
+โค้ดส่วนการทดสอบ: tests/test_app.py
+
+def test_create_todo_with_full_data(self, client):
+    todo_data = {"title": "Test Todo", "description": "This is a test todo"}
+    response = client.post("/api/todos", json=todo_data)
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data["success"] is True
+    assert data["data"]["title"] == "Test Todo"
+
+
+คำอธิบาย:
+ทดสอบว่าระบบสามารถสร้าง Todo ได้สำเร็จเมื่อส่งข้อมูล title และ description ถูกต้อง
+ถ้าข้อมูลถูกต้อง ระบบจะบันทึกลงฐานข้อมูลและส่งกลับผลลัพธ์สถานะ 201 Created
+
+การจัดการข้อผิดพลาด (Global Exception Handler)
+
+โค้ดการทำงานจริง: app/init.py
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    db.session.rollback()
+    return jsonify({
+        "success": False,
+        "error": "Internal server error"
+    }), 500
+
+
+โค้ดส่วนการทดสอบ: tests/test_app.py
+
+def test_exception_handler(self):
+    app = create_app("testing")
+
+    @app.route("/test-error")
+    def trigger_error():
+        raise Exception("Test error")
+
+    client = app.test_client()
+    response = client.get("/test-error")
+    assert response.status_code == 500
+    data = response.get_json()
+    assert data["success"] is False
+    assert data["error"] == "Internal server error"
+
+
+คำอธิบาย:
+ฟังก์ชัน handle_exception() จะดักจับทุกข้อผิดพลาดที่ไม่ได้จัดการในระบบ
+หากเกิด error ใด ๆ เช่น raise Exception() ระบบจะ rollback database และส่งข้อความ "Internal server error" พร้อมสถานะ 500
 
 
 ```
@@ -2124,33 +2238,40 @@ docker-compose up -d
 
 ตรวจสอบว่าทำสำเร็จทุกข้อ:
 
-- [ ] สร้าง GitHub repository และ clone ลงเครื่อง
-- [ ] สร้าง Flask application ที่มี CRUD operations ครบถ้วน
-- [ ] เขียน tests ที่ครอบคลุม code coverage > 80%
-- [ ] สร้าง Dockerfile ที่ optimize แล้ว
-- [ ] สร้าง docker-compose.yml ที่แยก services
-- [ ] รัน application ด้วย Docker และทดสอบใน local สำเร็จ
-- [ ] สร้าง GitHub Actions workflow ที่มีทั้ง CI และ CD
-- [ ] Deploy ไปยัง Render สำเร็จ
-- [ ] Deploy ไปยัง Railway สำเร็จ
-- [ ] ทดสอบ API endpoints บน production
-- [ ] Health checks ทำงานถูกต้อง
-- [ ] Auto-deployment ทำงานเมื่อ push code ใหม่
+- [ ✔️ ] สร้าง GitHub repository และ clone ลงเครื่อง
+- [ ✔️ ] สร้าง Flask application ที่มี CRUD operations ครบถ้วน
+- [ ✔️ ] เขียน tests ที่ครอบคลุม code coverage > 80%
+- [ ✔️ ] สร้าง Dockerfile ที่ optimize แล้ว
+- [ ✔️ ] สร้าง docker-compose.yml ที่แยก services
+- [ ✔️ ] รัน application ด้วย Docker และทดสอบใน local สำเร็จ
+- [ ✔️ ] สร้าง GitHub Actions workflow ที่มีทั้ง CI และ CD
+- [ ✔️ ] Deploy ไปยัง Render สำเร็จ
+- [ ✔️ ] Deploy ไปยัง Railway สำเร็จ
+- [ ✔️ ] ทดสอบ API endpoints บน production
+- [ ✔️ ] Health checks ทำงานถูกต้อง
+- [ ✔️ ] Auto-deployment ทำงานเมื่อ push code ใหม่
 
 ### 10.2 คำถามทบทวน
 
 
 1. **Docker Architecture**:
    - เหตุใดจึงต้องแยก database และ application เป็นคนละ containers ?
+เพื่อให้แต่ละ service ทำงานแยกจากกัน (isolation) สามารถจัดการ lifecycle, scale, และ debug ได้ง่ายขึ้น เช่น ถ้า database พังสามารถ restart เฉพาะ container นั้นโดยไม่กระทบ Flaskapp.
+ช่วยลด coupling และเพิ่มความยืดหยุ่นในการ deploy
    - Multi-stage build มีประโยชน์อย่างไร?
+ทำให้ Docker image ขนาดเล็กลงและปลอดภัยขึ้น เพราะเราสามารถใช้ stage แรก (builder) สำหรับติดตั้ง dependencies และ compile เท่านั้น แล้วคัดเฉพาะไฟล์ที่จำเป็นไป stage สุดท้าย (runtime).ลดเวลา build และใช้ resource อย่างมีประสิทธิภาพ
 
 2. **Testing Strategy**:
    - การวัด code coverage มีความสำคัญอย่างไร?
+ช่วยให้ทราบว่ามีส่วนของโค้ดใดบ้างที่ถูกทดสอบแล้ว และส่วนไหนที่ยังไม่มีการทดสอบ ถ้า coverage สูง แสดงว่ามีความมั่นใจมากขึ้นว่าโค้ดจะไม่พังเมื่อมีการแก้ไขในอนาคต
 
 3. **Deployment**:
    - Health check endpoint มีความสำคัญอย่างไร?
+ใช้ตรวจว่าสถานะของระบบพร้อมทำงานหรือไม่ เช่น /api/health ต้องตอบ 200 OK. Workflow CI/CD ใช้ endpoint นี้ตรวจว่า deploy สำเร็จจริง และช่วย restart หรือ alert อัตโนมัติได้ถ้ามีปัญหา
    - Render และ Railway มีความแตกต่างกันอย่่างไร?
+Render เป็นแพลตฟอร์มสำหรับการ Deploy แอปที่เหมาะกับการใช้งานจริงในระดับ Production เพราะมีความเสถียรสูง เชื่อมต่อกับ GitHub ได้โดยอัตโนมัติ และมีระบบ Health Check ตรวจสอบสถานะของแอปหลังการ Deploy ซึ่งช่วยให้มั่นใจได้ว่าแอปพร้อมใช้งานจริง
 
+ส่วน Railway จะเหมาะกับการทดสอบหรือใช้งานในสภาพแวดล้อมแบบ Development มากกว่า เพราะสามารถ Deploy ได้รวดเร็ว ใช้งานผ่านคำสั่ง CLI ได้ง่าย แต่ความเสถียรและความยืดหยุ่นอาจน้อยกว่า Render เล็กน้อย และมักต้องตั้งค่าการเชื่อมต่อกับฐานข้อมูลหรือโทเคนเอง
 
 ---
 
